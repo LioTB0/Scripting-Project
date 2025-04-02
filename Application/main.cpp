@@ -53,6 +53,6 @@ int main()
 		//Game & render loop
 	}
 
-	std::cout << "Hello world!" << std::endl;
+	std::cout << "Hello Bergman!" << std::endl;
 	return 0;
 }
