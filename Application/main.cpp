@@ -38,6 +38,8 @@ void ConsoleThreadFunction(lua_State* L)
 
 int main()
 {
+	std::cout << "Hello Bergman!" << std::endl;
+
 	//Rekommenderat att ha ett men går att ha flera om det behövs
 	lua_State* L = luaL_newstate();
 
@@ -53,6 +55,5 @@ int main()
 		//Game & render loop
 	}
 
-	std::cout << "Hello Bergman!" << std::endl;
 	return 0;
 }
