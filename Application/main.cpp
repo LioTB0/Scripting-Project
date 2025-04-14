@@ -4,8 +4,9 @@
 
 #include "lua.hpp"
 #include "raylib.h"
+#include "raymath.h"
 
-#define MAX_COLUMNS 5
+#define MAX_COLUMNS 10
 #define EPSILON 0.0001f
 
 void DumpError(lua_State* L)
@@ -53,15 +54,15 @@ int main()
 	////Skapa tråd
 	//std::thread consoleThread(ConsoleThreadFunction, L);
 
-	const int screenWidth = 800;
-	const int screenHeight = 450;
+	const int screenWidth = 800 * 2;
+	const int screenHeight = 450 * 2;
 
 	InitWindow(screenWidth, screenHeight, "Jonas Jump");
 
 	// Define the camera to look into our 3d world (position, target, up vector)
 	Camera camera = { 0 };
 	camera.position = { 0.0f, 2.0f, 4.0f };    // Camera position
-	camera.target = { 0.0f, 2.0f, 0.0f };      // Camera looking at point
+	camera.target = { 0.0f, 0.0f, 0.0f };      // Camera looking at point
 	camera.up = { 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
 	camera.fovy = 60.0f;                                // Camera field-of-view Y
 	camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
@@ -72,19 +73,22 @@ int main()
 	float heights[MAX_COLUMNS] = { 0 };
 	Vector3 positions[MAX_COLUMNS] = { 0 };
 	Color colors[MAX_COLUMNS] = { 0 };
-    Vector3 playerSize = { 1.0f, 2.0f, 1.0f };
+    Vector3 playerSize = { 0.8f, 1.8f, 0.8f };
 
     Vector3 previousPlayerPosition = { 0.0f, 1.0f, 2.0f };
     Vector3 playerPosition = { 0.0f, 1.0f, 2.0f };
     Vector3 playerSpeed = { 0, 0, 0 };
+    Vector3 lookDirection = { 0, 0, 1.0f };
 
     bool collisionX = false;
+    bool collisionY = false;
     bool collisionZ = false;
+    bool airborne = false;
 
 	for (int i = 0; i < MAX_COLUMNS; i++)
 	{
-		heights[i] = (float)GetRandomValue(1, 10);
-		positions[i] = { (float)GetRandomValue(-15, -5), heights[i] / 2.0f, (float)GetRandomValue(5, 15) };
+		heights[i] = 1.0f;
+		positions[i] = { (float)GetRandomValue(-15, -5), (float)(i + 2.0f), (float)GetRandomValue(5, 15)};
 		colors[i] = { (unsigned char)GetRandomValue(20, 255), (unsigned char)GetRandomValue(10, 55), 30, 255 };
 	}
 
@@ -121,25 +125,57 @@ int main()
             camera.up = { 0.0f, 1.0f, 0.0f }; // Reset roll
         }
 
-        if (IsKeyDown(KEY_UP))
+        lookDirection = Vector3Normalize(camera.target - camera.position);
+        camera.target = camera.position + lookDirection;
+
+        if (IsKeyDown(KEY_W))
         {
-            playerPosition.z -= 10.0f * GetFrameTime();
+            playerSpeed.x += Vector3Scale(lookDirection, (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).x;
+            playerSpeed.z += Vector3Scale(lookDirection, (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).z;
 
         }
-        if (IsKeyDown(KEY_DOWN))
+        if (IsKeyDown(KEY_S))
         {
-            playerPosition.z += 10.0f * GetFrameTime();
+            
+            playerSpeed.x -= Vector3Scale(lookDirection, (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).x;
+            playerSpeed.z -= Vector3Scale(lookDirection, (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).z;
+
 
         }
-        if (IsKeyDown(KEY_LEFT))
+        if (IsKeyDown(KEY_A))
         {
-            playerPosition.x -= 10.0f * GetFrameTime();
+            playerSpeed.x += Vector3Scale(Vector3RotateByAxisAngle(lookDirection, { 0, 1, 0 }, 90), (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).x;
+            playerSpeed.z += Vector3Scale(Vector3RotateByAxisAngle(lookDirection, { 0, 1, 0 }, 90), (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).z;
 
         }
-        if (IsKeyDown(KEY_RIGHT))
+        if (IsKeyDown(KEY_D))
         {
-            playerPosition.x += 10.0f * GetFrameTime();
+            playerSpeed.x -= Vector3Scale(Vector3RotateByAxisAngle(lookDirection, { 0, 1, 0 }, 90), (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).x;
+            playerSpeed.z -= Vector3Scale(Vector3RotateByAxisAngle(lookDirection, { 0, 1, 0 }, 90), (0.5f + IsKeyDown(KEY_LEFT_SHIFT))).z;
+
         }
+        if (IsKeyDown(KEY_SPACE) && !airborne)
+        {
+            playerSpeed.y += 30.0f;
+            airborne = true;
+        }
+
+        playerSpeed.x *= 0.9f;
+        playerSpeed.z *= 0.9f;
+        playerSpeed.y -= 2.0f;
+
+        if (playerSpeed.y <= -50.0f)
+            playerSpeed.y = -50.0f;
+
+        playerPosition = Vector3Add(playerPosition, Vector3Scale(playerSpeed, GetFrameTime()));
+
+        if (playerPosition.y < 1.0f)
+        {
+            playerSpeed.y = 0.0f;
+            playerPosition.y = 1.0f;
+            airborne = false;
+        }
+
 
         for (size_t i = 0; i < MAX_COLUMNS; i++)
         {
@@ -159,15 +195,19 @@ int main()
                 BoundingBox{
                 Vector3 {
                     float(positions[i].x - 1.0f),
-                    float(0.0f),
+                    float(positions[i].y - 0.5f),
                     float(positions[i].z - 1.0f)
                 },
                 Vector3 {
                     float(positions[i].x + 1.0f),
-                    float(1.0f),
+                    float(positions[i].y + 0.5f),
                     float(positions[i].z + 1.0f)
                 }
-                })) collisionX = true;
+                })) 
+            {
+                playerSpeed.x *= 0.2f;
+                collisionX = true;
+            }
 
             if (CheckCollisionBoxes(
                 BoundingBox{
@@ -185,15 +225,53 @@ int main()
                 BoundingBox{
                 Vector3 {
                     float(positions[i].x - 1.0f),
-                    float(0.0f),
+                    float(positions[i].y - 0.5f),
                     float(positions[i].z - 1.0f)
                 },
                     Vector3 {
                     float(positions[i].x + 1.0f),
-                    float(1.0f),
+                    float(positions[i].y + 0.5f),
                     float(positions[i].z + 1.0f)
                 }
-                })) collisionZ = true;
+                })) 
+            {
+                playerSpeed.z *= 0.2f;
+                collisionZ = true;
+            }
+
+            if (CheckCollisionBoxes(
+                BoundingBox{
+                Vector3 {
+                previousPlayerPosition.x - playerSize.x / 2,
+                    playerPosition.y - playerSize.y / 2,
+                    previousPlayerPosition.z - playerSize.z / 2
+                },
+                Vector3 {
+                previousPlayerPosition.x + playerSize.x / 2,
+                    playerPosition.y + playerSize.y / 2,
+                    previousPlayerPosition.z + playerSize.z / 2
+                }
+                },
+                BoundingBox{
+                Vector3 {
+                    float(positions[i].x - 1.0f),
+                    float(positions[i].y - 0.5f),
+                    float(positions[i].z - 1.0f)
+                },
+                    Vector3 {
+                    float(positions[i].x + 1.0f),
+                    float(positions[i].y + 0.5f),
+                    float(positions[i].z + 1.0f)
+                }
+                }))
+            {
+                collisionY = true;
+                if (playerSpeed.y < 0)
+                    airborne = false;
+                else
+                    playerSpeed.y = 0;
+                playerSpeed.y *= 0.2f;
+            }
         }
         
 
@@ -208,9 +286,15 @@ int main()
             playerPosition.z = previousPlayerPosition.z;
         else
             previousPlayerPosition.z = playerPosition.z;
+        if (collisionY)
+            playerPosition.y = previousPlayerPosition.y;
+        else
+            previousPlayerPosition.y = playerPosition.y;
 
         collisionX = false;
         collisionZ = false;
+        collisionY = false;
+
 
         // Switch camera projection
         if (IsKeyPressed(KEY_P))
@@ -251,22 +335,26 @@ int main()
                 // Camera PRO usage example (EXPERIMENTAL)
                 // This new camera function allows custom movement/rotation values to be directly provided
                 // as input parameters, with this approach, rcamera module is internally independent of raylib inputs
+
+
                 UpdateCameraPro(&camera,
                     Vector3{
-                        (IsKeyDown(KEY_W))*0.1f -      // Move forward-backward
-                        (IsKeyDown(KEY_S))*0.1f,
-                        (IsKeyDown(KEY_D))*0.1f -   // Move right-left
-                        (IsKeyDown(KEY_A))*0.1f,
-                        (IsKeyDown(KEY_SPACE)) * 0.1f -   // Move right-left
-                        (IsKeyDown(KEY_LEFT_SHIFT)) * 0.1f                                         // Move up-down
+                        (IsKeyDown(KEY_UP))*0.1f -      // Move forward-backward
+                        (IsKeyDown(KEY_DOWN))*0.1f,
+                        (IsKeyDown(KEY_RIGHT))*0.1f -   // Move right-left
+                        (IsKeyDown(KEY_LEFT))*0.1f,
+                        (IsKeyDown(KEY_ENTER)) * 0.1f-   // Move right-left
+                        (IsKeyDown(KEY_RIGHT_SHIFT)) * 0.1f                                 // Move up-down
                     },
                     Vector3{
                         GetMouseDelta().x*0.05f,                            // Rotation: yaw
                         GetMouseDelta().y*0.05f,                            // Rotation: pitch
                         0.0f                                                // Rotation: roll
                     },
-                    GetMouseWheelMove()*2.0f);                              // Move to target (zoom)
-        
+                    0);                              // Move to target (zoom)
+
+
+
         //----------------------------------------------------------------------------------
 
         // Draw
@@ -278,23 +366,19 @@ int main()
         BeginMode3D(camera);
 
         DrawPlane({ 0.0f, 0.0f, 0.0f }, { 32.0f, 32.0f }, LIGHTGRAY); // Draw ground
-        DrawCube({ -16.0f, 2.5f, 0.0f }, 1.0f, 5.0f, 32.0f, BLUE);     // Draw a blue wall
-        DrawCube({ 16.0f, 2.5f, 0.0f }, 1.0f, 5.0f, 32.0f, LIME);      // Draw a green wall
-        DrawCube({ 0.0f, 2.5f, 16.0f }, 32.0f, 5.0f, 1.0f, GOLD);      // Draw a yellow wall
 
         // Draw some cubes around
         for (int i = 0; i < MAX_COLUMNS; i++)
         {
             //DrawCube(positions[i], 2.0f, heights[i], 2.0f, colors[i]);
-            DrawCubeWires(positions[i], 2.0f, heights[i], 2.0f, RED);
+            DrawCube(positions[i], 2.0f, heights[i], 2.0f, RED);
+            DrawCubeWires(positions[i], 2.0f, heights[i], 2.0f, BLACK);
         }
 
         // Draw player cube
-        if (cameraMode == CAMERA_THIRD_PERSON)
-        {
-            DrawCube(playerPosition, playerSize.x, playerSize.y, playerSize.z, PURPLE);
-            DrawCubeWires(playerPosition, playerSize.x, playerSize.y, playerSize.z, DARKPURPLE);
-        }
+        DrawCube(playerPosition, playerSize.x, playerSize.y, playerSize.z, PURPLE);
+        DrawCubeWires(playerPosition, playerSize.x, playerSize.y, playerSize.z, DARKPURPLE);
+
 
         EndMode3D();
 
